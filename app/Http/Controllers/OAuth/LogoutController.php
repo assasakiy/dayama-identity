@@ -4,6 +4,7 @@ namespace App\Http\Controllers\OAuth;
 
 use App\Http\Controllers\Controller;
 use App\Models\ApplicationClient;
+use App\Services\KeyRotationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -24,18 +25,27 @@ class LogoutController extends Controller
         if ($idTokenHint) {
             $parts = explode('.', $idTokenHint);
             if (count($parts) === 3) {
-                $publicKeyPem = file_get_contents(storage_path('oauth-public.key'));
-                $verified = openssl_verify(
-                    $parts[0].'.'.$parts[1],
-                    base64_decode(strtr($parts[2], '-_', '+/')),
-                    $publicKeyPem,
-                    OPENSSL_ALGO_SHA256
-                );
+                $header = json_decode(base64_decode(strtr($parts[0], '-_', '+/')), true);
+                $kid = $header['kid'] ?? null;
+                $service = app(KeyRotationService::class);
+                $publicKeyPem = $kid ? $service->findPublicKeyByKid($kid) : null;
+                if (! $publicKeyPem && file_exists(storage_path('oauth-public.key'))) {
+                    $publicKeyPem = file_get_contents(storage_path('oauth-public.key'));
+                }
 
-                if ($verified === 1) {
-                    $claims = json_decode(base64_decode(strtr($parts[1], '-_', '+/')), true);
-                    if (is_array($claims) && ! empty($claims['aud'])) {
-                        $clientId = $claims['aud'];
+                if ($publicKeyPem) {
+                    $verified = openssl_verify(
+                        $parts[0].'.'.$parts[1],
+                        base64_decode(strtr($parts[2], '-_', '+/')),
+                        $publicKeyPem,
+                        OPENSSL_ALGO_SHA256
+                    );
+
+                    if ($verified === 1) {
+                        $claims = json_decode(base64_decode(strtr($parts[1], '-_', '+/')), true);
+                        if (is_array($claims) && ! empty($claims['aud'])) {
+                            $clientId = $claims['aud'];
+                        }
                     }
                 }
             }

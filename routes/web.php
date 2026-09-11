@@ -15,6 +15,7 @@ use App\Http\Controllers\Dashboard\UserController;
 use App\Http\Controllers\OAuth\LogoutController;
 use App\Http\Controllers\OAuth\TokenIntrospectionController;
 use App\Http\Controllers\OAuth\TokenRevocationController;
+use App\Services\KeyRotationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Route;
 
@@ -48,29 +49,9 @@ Route::post('/oauth/revoke', TokenRevocationController::class)->middleware('thro
 Route::post('/oauth/introspect', TokenIntrospectionController::class)->middleware('throttle:60,1')->name('passport.token.introspect');
 Route::match(['get', 'post'], '/oauth/logout', LogoutController::class)->middleware('throttle:30,1')->name('passport.logout');
 
-Route::get('/oauth/jwks', function (): JsonResponse {
-    $publicKeyPem = file_get_contents(storage_path('oauth-public.key'));
-    $key = openssl_pkey_get_public($publicKeyPem);
-    $details = openssl_pkey_get_details($key);
-    openssl_pkey_free($key);
-
-    $nBytes = $details['rsa']['n'];
-    $eBytes = $details['rsa']['e'];
-
-    $hash = hash('sha256', $nBytes.$eBytes);
-    $kid = substr($hash, 0, 16);
-
-    $base64url = fn (string $data): string => rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
-
+Route::get('/oauth/jwks', function (KeyRotationService $service): JsonResponse {
     return response()->json([
-        'keys' => [[
-            'kid' => $kid,
-            'kty' => 'RSA',
-            'alg' => 'RS256',
-            'use' => 'sig',
-            'n' => $base64url($nBytes),
-            'e' => $base64url($eBytes),
-        ]],
+        'keys' => $service->getValidJwks(),
     ]);
 });
 

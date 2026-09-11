@@ -5,6 +5,7 @@ namespace App\Http\Controllers\OAuth;
 use App\Models\ApplicationClient;
 use App\Models\AuthCode as AuthCodeModel;
 use App\Models\User;
+use App\Services\KeyRotationService;
 use Laravel\Passport\Http\Controllers\AccessTokenController as PassportTokenController;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -64,10 +65,9 @@ class TokenController extends PassportTokenController
 
     protected function makeIdToken(string $userId, string $clientId, int $expiresIn, ?string $nonce, ?int $authTime): string
     {
-        $privateKeyPath = storage_path('oauth-private.key');
-        $privateKeyPem = file_get_contents($privateKeyPath);
-
-        $kid = $this->computeKid();
+        $activeKey = app(KeyRotationService::class)->getActiveKey();
+        $privateKeyPem = $activeKey->private_key;
+        $kid = $activeKey->kid;
 
         $header = json_encode(['alg' => 'RS256', 'typ' => 'JWT', 'kid' => $kid]);
 
@@ -108,22 +108,6 @@ class TokenController extends PassportTokenController
         $signatureB64 = $this->base64url($signature);
 
         return $signedData.'.'.$signatureB64;
-    }
-
-    protected function computeKid(): string
-    {
-        $publicKeyPem = file_get_contents(storage_path('oauth-public.key'));
-
-        $key = openssl_pkey_get_public($publicKeyPem);
-        $details = openssl_pkey_get_details($key);
-        openssl_pkey_free($key);
-
-        $nBytes = $details['rsa']['n'];
-        $eBytes = $details['rsa']['e'];
-
-        $hash = hash('sha256', $nBytes.$eBytes);
-
-        return substr($hash, 0, 16);
     }
 
     protected function base64url(string $data): string
