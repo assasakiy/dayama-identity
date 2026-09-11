@@ -31,6 +31,25 @@ class OAuthClientTest extends TestCase
                 ->where('applicationId', $app->id));
     }
 
+    public function test_edit_page_loads_clients_with_is_confidential_and_hides_secret(): void
+    {
+        $manager = $this->manager();
+        $appPerm = Permission::firstOrCreate(['name' => 'account.apps.manage'], ['module' => 'account', 'action' => 'manage']);
+        $manager->roles->first()->permissions()->attach($appPerm);
+
+        $app = $this->app();
+        $client = $this->client($app);
+
+        $this->actingAs($manager)->get("/dashboard/apps/{$app->id}/edit")
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('Dashboard/Apps/Edit')
+                ->has('application.clients', 1)
+                ->where('application.clients.0.id', $client->id)
+                ->where('application.clients.0.is_confidential', true)
+                ->missing('application.clients.0.secret'));
+    }
+
     public function test_manager_can_create_a_client_with_proper_fields(): void
     {
         $manager = $this->manager();

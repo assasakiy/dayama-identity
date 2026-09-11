@@ -65,7 +65,20 @@ class ApplicationController extends Controller
     {
         abort_unless($request->user()->can('account.apps.manage'), 403);
 
-        $application->load('users:id,name,email,status', 'clients:id,name,redirect_uris,grant_types,revoked,created_at,updated_at');
+        $application->load(
+            'users:id,name,email,status',
+            'clients:id,application_id,name,secret,redirect_uris,grant_types,revoked,created_at,updated_at'
+        );
+
+        $application->setRelation(
+            'clients',
+            $application->clients->map(function ($client) {
+                $client->is_confidential = $client->confidential();
+                $client->makeHidden('secret');
+
+                return $client;
+            })
+        );
 
         $users = User::where('status', 'active')->orderBy('name')->select('id', 'name', 'email')->get();
 
