@@ -1,7 +1,11 @@
 <?php
 
+use Dotenv\Dotenv;
+use Dotenv\Repository\Adapter\PutenvAdapter;
+use Dotenv\Repository\RepositoryBuilder;
 use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
+use Illuminate\Support\Env;
 
 define('LARAVEL_START', microtime(true));
 
@@ -12,6 +16,14 @@ if (file_exists($maintenance = __DIR__.'/../storage/framework/maintenance.php'))
 
 // Register the Composer autoloader...
 require __DIR__.'/../vendor/autoload.php';
+
+if (file_exists(__DIR__.'/../.env')) {
+    $envRepo = RepositoryBuilder::createWithDefaultAdapters()
+        ->addAdapter(PutenvAdapter::class)
+        ->make();
+    Dotenv::create($envRepo, __DIR__.'/..')->load();
+    Env::enablePutenv();
+}
 
 // Bootstrap Laravel and handle the request...
 /** @var Application $app */
