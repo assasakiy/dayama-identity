@@ -24,9 +24,19 @@ class LogoutController extends Controller
         if ($idTokenHint) {
             $parts = explode('.', $idTokenHint);
             if (count($parts) === 3) {
-                $claims = json_decode(base64_decode(strtr($parts[1], '-_', '+/')), true);
-                if (is_array($claims) && ! empty($claims['aud'])) {
-                    $clientId = $claims['aud'];
+                $publicKeyPem = file_get_contents(storage_path('oauth-public.key'));
+                $verified = openssl_verify(
+                    $parts[0].'.'.$parts[1],
+                    base64_decode(strtr($parts[2], '-_', '+/')),
+                    $publicKeyPem,
+                    OPENSSL_ALGO_SHA256
+                );
+
+                if ($verified === 1) {
+                    $claims = json_decode(base64_decode(strtr($parts[1], '-_', '+/')), true);
+                    if (is_array($claims) && ! empty($claims['aud'])) {
+                        $clientId = $claims['aud'];
+                    }
                 }
             }
         }

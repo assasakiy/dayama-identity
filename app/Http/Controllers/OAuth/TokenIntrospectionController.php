@@ -40,6 +40,10 @@ class TokenIntrospectionController extends Controller
             return response()->json(['active' => false]);
         }
 
+        if ($record->client_id !== $client->id) {
+            return response()->json(['active' => false]);
+        }
+
         $scopes = is_array($record->scopes) ? $record->scopes : (array) json_decode((string) $record->scopes, true);
 
         return response()->json([

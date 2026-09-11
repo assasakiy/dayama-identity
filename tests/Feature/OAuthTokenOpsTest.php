@@ -183,4 +183,137 @@ class OAuthTokenOpsTest extends TestCase
         $this->assertArrayHasKey('roles', $userinfo);
         $this->assertEquals(['Admin'], $userinfo['roles']);
     }
+
+    public function test_client_cannot_introspect_token_issued_to_different_client(): void
+    {
+        $user = User::factory()->create(['status' => 'active']);
+        $app = Application::create([
+            'code' => 'app-one',
+            'name' => 'App One',
+            'base_url' => 'https://one.example.com',
+            'launch_url' => 'https://one.example.com/home',
+            'status' => 'active',
+            'access_mode' => 'authenticated',
+            'is_first_party' => true,
+        ]);
+
+        $clientA = ApplicationClient::forceCreate([
+            'name' => 'Client A',
+            'redirect_uris' => ['https://one.example.com/callback'],
+            'grant_types' => ['authorization_code'],
+            'revoked' => false,
+            'application_id' => $app->id,
+            'secret' => 'secret-a',
+        ]);
+
+        $clientB = ApplicationClient::forceCreate([
+            'name' => 'Client B',
+            'redirect_uris' => ['https://two.example.com/callback'],
+            'grant_types' => ['authorization_code'],
+            'revoked' => false,
+            'application_id' => $app->id,
+            'secret' => 'secret-b',
+        ]);
+
+        $verifier = rtrim(strtr(base64_encode(random_bytes(48)), '+/', '-_'), '=');
+        $challenge = rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=');
+
+        $authRes = $this->actingAs($user)->get('/oauth/authorize?'.http_build_query([
+            'response_type' => 'code',
+            'client_id' => $clientA->id,
+            'redirect_uri' => 'https://one.example.com/callback',
+            'scope' => 'openid profile email',
+            'state' => 'state-a',
+            'code_challenge' => $challenge,
+            'code_challenge_method' => 'S256',
+        ]))->assertRedirect();
+
+        parse_str((string) parse_url($authRes->headers->get('Location'), PHP_URL_QUERY), $query);
+
+        $tokenA = $this->post('/oauth/token', [
+            'grant_type' => 'authorization_code',
+            'client_id' => $clientA->id,
+            'client_secret' => 'secret-a',
+            'redirect_uri' => 'https://one.example.com/callback',
+            'code' => $query['code'],
+            'code_verifier' => $verifier,
+        ])->assertOk()->json();
+
+        // Client B tries to introspect Client A's token -> MUST return active: false
+        $introFromB = $this->postJson('/oauth/introspect', [
+            'token' => $tokenA['access_token'],
+            'client_id' => $clientB->id,
+            'client_secret' => 'secret-b',
+        ])->assertOk()->json();
+
+        $this->assertFalse($introFromB['active']);
+    }
+
+    public function test_rp_initiated_logout_verifies_id_token_hint_signature(): void
+    {
+        $user = User::factory()->create(['status' => 'active']);
+        $app = Application::create([
+            'code' => 'app-slo-hint',
+            'name' => 'SLO Hint App',
+            'base_url' => 'https://hint.example.com',
+            'launch_url' => 'https://hint.example.com/home',
+            'status' => 'active',
+            'access_mode' => 'authenticated',
+            'is_first_party' => true,
+        ]);
+
+        $client = ApplicationClient::forceCreate([
+            'name' => 'SLO Hint Client',
+            'redirect_uris' => ['https://hint.example.com/callback'],
+            'grant_types' => ['authorization_code'],
+            'revoked' => false,
+            'application_id' => $app->id,
+            'secret' => 'secret-hint',
+        ]);
+
+        $verifier = rtrim(strtr(base64_encode(random_bytes(48)), '+/', '-_'), '=');
+        $authRes = $this->actingAs($user)->get('/oauth/authorize?'.http_build_query([
+            'response_type' => 'code',
+            'client_id' => $client->id,
+            'redirect_uri' => 'https://hint.example.com/callback',
+            'scope' => 'openid',
+            'state' => 'xyz',
+            'code_challenge' => rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '='),
+            'code_challenge_method' => 'S256',
+        ]))->assertRedirect();
+
+        parse_str((string) parse_url($authRes->headers->get('Location'), PHP_URL_QUERY), $query);
+        $token = $this->post('/oauth/token', [
+            'grant_type' => 'authorization_code',
+            'client_id' => $client->id,
+            'client_secret' => 'secret-hint',
+            'redirect_uri' => 'https://hint.example.com/callback',
+            'code' => $query['code'],
+            'code_verifier' => $verifier,
+        ])->assertOk()->json();
+
+        $validIdToken = $token['id_token'];
+
+        // 1. Valid id_token_hint allows redirect
+        $this->actingAs($user);
+        $resValid = $this->get('/oauth/logout?'.http_build_query([
+            'id_token_hint' => $validIdToken,
+            'post_logout_redirect_uri' => 'https://hint.example.com/callback',
+            'state' => 'logout-ok',
+        ]));
+        $resValid->assertRedirect('https://hint.example.com/callback?state=logout-ok');
+        $this->assertGuest('web');
+
+        // 2. Forged id_token_hint is rejected and falls back to login redirect
+        $parts = explode('.', $validIdToken);
+        $forgedIdToken = $parts[0].'.'.$parts[1].'.fake_signature';
+
+        $this->actingAs($user);
+        $resForged = $this->get('/oauth/logout?'.http_build_query([
+            'id_token_hint' => $forgedIdToken,
+            'post_logout_redirect_uri' => 'https://hint.example.com/callback',
+        ]));
+        $resForged->assertRedirect(route('login'));
+        $this->assertGuest('web');
+    }
 }
