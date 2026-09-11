@@ -23,6 +23,7 @@ class Application extends Model
         'launch_url',
         'access_mode',
         'is_first_party',
+        'include_roles_claim',
         'status',
     ];
 
@@ -30,6 +31,7 @@ class Application extends Model
     {
         return [
             'is_first_party' => 'boolean',
+            'include_roles_claim' => 'boolean',
         ];
     }
 

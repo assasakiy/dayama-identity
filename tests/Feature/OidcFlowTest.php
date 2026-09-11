@@ -183,7 +183,11 @@ class OidcFlowTest extends TestCase
             ->assertJsonPath('issuer', $issuer)
             ->assertJsonPath('authorization_endpoint', $issuer.'/oauth/authorize')
             ->assertJsonPath('token_endpoint', $issuer.'/oauth/token')
-            ->assertJsonPath('jwks_uri', $issuer.'/oauth/jwks');
+            ->assertJsonPath('jwks_uri', $issuer.'/oauth/jwks')
+            ->assertJsonPath('end_session_endpoint', $issuer.'/oauth/logout')
+            ->assertJsonPath('revocation_endpoint', $issuer.'/oauth/revoke')
+            ->assertJsonPath('introspection_endpoint', $issuer.'/oauth/introspect')
+            ->assertJsonPath('code_challenge_methods_supported', ['S256', 'plain']);
 
         $keys = $this->getJson('/oauth/jwks')->assertOk()->json('keys');
         $this->assertCount(1, $keys);
@@ -266,6 +270,46 @@ class OidcFlowTest extends TestCase
         parse_str((string) parse_url($location, PHP_URL_QUERY), $query);
         $this->assertSame($state, $query['state'] ?? null);
         $this->assertNotEmpty($query['code'] ?? null);
+    }
+
+    public function test_public_client_can_exchange_token_with_pkce_and_no_secret(): void
+    {
+        $user = User::factory()->create(['status' => 'active']);
+        $app = $this->app(['is_first_party' => true]);
+        $client = ApplicationClient::forceCreate([
+            'name' => 'SPA Client',
+            'redirect_uris' => ['https://client.example.com/callback'],
+            'grant_types' => ['authorization_code', 'refresh_token'],
+            'revoked' => false,
+            'application_id' => $app->id,
+            'secret' => null,
+        ]);
+
+        $verifier = $this->codeVerifier();
+        $challenge = $this->codeChallenge($verifier);
+        $state = fake()->uuid();
+
+        $params = $this->oauthParams($client, [
+            'scope' => 'openid email',
+            'state' => $state,
+            'code_challenge' => $challenge,
+            'code_challenge_method' => 'S256',
+        ]);
+
+        $authRes = $this->actingAs($user)->get('/oauth/authorize?'.http_build_query($params))->assertRedirect();
+        parse_str((string) parse_url($authRes->headers->get('Location'), PHP_URL_QUERY), $query);
+
+        $tokenRes = $this->post('/oauth/token', [
+            'grant_type' => 'authorization_code',
+            'client_id' => $client->id,
+            'redirect_uri' => 'https://client.example.com/callback',
+            'code' => $query['code'],
+            'code_verifier' => $verifier,
+        ]);
+
+        $tokenRes->assertOk();
+        $this->assertArrayHasKey('access_token', $tokenRes->json());
+        $this->assertArrayHasKey('id_token', $tokenRes->json());
     }
 
     protected function oauthParams(ApplicationClient $client, array $overrides = []): array

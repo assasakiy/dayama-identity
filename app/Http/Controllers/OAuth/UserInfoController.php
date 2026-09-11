@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\OAuth;
 
+use App\Models\ApplicationClient;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -35,6 +36,13 @@ class UserInfoController
             if ($profile && $profile->avatar_url) {
                 $claims['picture'] = $profile->avatar_url;
             }
+        }
+
+        $client = $token ? ApplicationClient::with('application')->find($token->client_id) : null;
+        if ($client?->application?->include_roles_claim) {
+            $roles = $user->roles()->pluck('name')->all();
+            $claims['roles'] = $roles;
+            $claims['groups'] = $roles;
         }
 
         return response()->json($claims);

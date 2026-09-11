@@ -27,6 +27,7 @@ class ApplicationRequest extends FormRequest
             'launch_url' => ['required', 'string', 'max:2048', fn ($attribute, $value, $fail) => UrlSecurityService::isValidUrl($value) ?: $fail('Launch URL tidak aman.')],
             'status' => ['required', Rule::in(['active', 'inactive'])],
             'access_mode' => ['required', Rule::in(['public', 'authenticated', 'restricted'])],
+            'include_roles_claim' => ['nullable', 'boolean'],
         ];
     }
 }

@@ -5,24 +5,17 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
 import { Btn } from '@/Components/ui/btn';
 import { Switch } from '@/Components/ui/switch';
-import { Badge } from '@/Components/ui/badge';
-import ConfirmDialog from '@/Components/ui/confirm-dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/Components/ui/tabs';
 import ClientTab from './ClientTab';
-import { Save, ArrowLeft, AppWindow, Globe, Lock, UserPlus, Trash2, User, Eye } from 'lucide-react';
-
-interface GrantedUser {
-    id: string;
-    name: string;
-    email: string;
-    status: string;
-}
+import AccessTab, { GrantedUser } from './AccessTab';
+import { Save, ArrowLeft, AppWindow, Globe, Lock, Eye } from 'lucide-react';
 
 interface OAuthClient {
     id: string;
     name: string;
     redirect_uris: string[];
     grant_types: string[];
+    is_confidential?: boolean;
     revoked: boolean;
     created_at: string;
     updated_at: string;
@@ -37,6 +30,7 @@ interface ApplicationData {
     base_url: string;
     launch_url: string;
     access_mode: 'public' | 'authenticated' | 'restricted';
+    include_roles_claim?: boolean;
     status: 'active' | 'inactive';
     users?: GrantedUser[];
     clients?: OAuthClient[];
@@ -56,12 +50,10 @@ export default function Edit({
         base_url: application.base_url,
         launch_url: application.launch_url,
         access_mode: application.access_mode,
+        include_roles_claim: Boolean(application.include_roles_claim),
         status: application.status,
     });
 
-    const [selectedUserId, setSelectedUserId] = useState('');
-    const [granting, setGranting] = useState(false);
-    const [userToRevoke, setUserToRevoke] = useState<GrantedUser | null>(null);
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [submitting, setSubmitting] = useState(false);
     const [activeTab, setActiveTab] = useState('general');
@@ -74,28 +66,6 @@ export default function Edit({
             onSuccess: () => { setSubmitting(false); },
         });
     };
-
-    const handleGrantAccess = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!selectedUserId) return;
-        setGranting(true);
-        router.post(`/dashboard/apps/${application.id}/grants`, { user_id: selectedUserId }, {
-            preserveScroll: true,
-            onSuccess: () => { setSelectedUserId(''); setGranting(false); },
-            onError: () => setGranting(false),
-        });
-    };
-
-    const confirmRevoke = () => {
-        if (!userToRevoke) return;
-        router.delete(`/dashboard/apps/${application.id}/grants/${userToRevoke.id}`, {
-            preserveScroll: true,
-            onSuccess: () => setUserToRevoke(null),
-        });
-    };
-
-    const grantedUserIds = new Set((application.users || []).map(u => u.id));
-    const availableUsersToGrant = users.filter(u => !grantedUserIds.has(u.id));
 
     const { props } = usePage<any>();
     const canManageOAuth = props.auth?.permissions?.includes('account.oauth-clients.manage') ?? false;
@@ -131,14 +101,14 @@ export default function Edit({
                             <Card>
                                 <CardHeader className="border-b border-border-subtle pb-4">
                                     <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                                        <AppWindow className="w-4 h-4 text-primary" /> Rincian Aplikasi
+                                        <AppWindow className="w-4 h-4 text-primary" /> Profil & Alamat Layanan
                                     </CardTitle>
                                 </CardHeader>
-                                <CardContent className="pt-6 space-y-5">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                                        <div className="space-y-1.5">
-                                            <label className="text-sm font-medium">Nama Aplikasi</label>
+                                <CardContent className="pt-6 space-y-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div>
                                             <Input
+                                                label="Nama Aplikasi"
                                                 name="name"
                                                 value={form.name}
                                                 onChange={(e) => setForm(prev => ({ ...prev, name: e.target.value }))}
@@ -146,10 +116,9 @@ export default function Edit({
                                             />
                                             {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
                                         </div>
-
-                                        <div className="space-y-1.5">
-                                            <label className="text-sm font-medium">Kode Unik</label>
+                                        <div>
                                             <Input
+                                                label="Kode Unik (Slug)"
                                                 name="code"
                                                 value={form.code}
                                                 onChange={(e) => setForm(prev => ({ ...prev, code: e.target.value }))}
@@ -159,19 +128,21 @@ export default function Edit({
                                         </div>
                                     </div>
 
-                                    <div className="space-y-1.5">
-                                        <label className="text-sm font-medium">Deskripsi</label>
-                                        <Input
-                                            name="description"
+                                    <div>
+                                        <label className="text-sm font-medium">Deskripsi Singkat</label>
+                                        <textarea
                                             value={form.description}
                                             onChange={(e) => setForm(prev => ({ ...prev, description: e.target.value }))}
+                                            rows={2}
+                                            className="w-full mt-1.5 rounded-md border border-border-subtle bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
                                         />
+                                        {errors.description && <p className="text-xs text-destructive">{errors.description}</p>}
                                     </div>
 
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                                        <div className="space-y-1.5">
-                                            <label className="text-sm font-medium">Base URL</label>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div>
                                             <Input
+                                                label="Base URL"
                                                 name="base_url"
                                                 value={form.base_url}
                                                 onChange={(e) => setForm(prev => ({ ...prev, base_url: e.target.value }))}
@@ -179,10 +150,9 @@ export default function Edit({
                                             />
                                             {errors.base_url && <p className="text-xs text-destructive">{errors.base_url}</p>}
                                         </div>
-
-                                        <div className="space-y-1.5">
-                                            <label className="text-sm font-medium">Launch URL (Tujuan Launcher)</label>
+                                        <div>
                                             <Input
+                                                label="Launch URL (SSO Landing)"
                                                 name="launch_url"
                                                 value={form.launch_url}
                                                 onChange={(e) => setForm(prev => ({ ...prev, launch_url: e.target.value }))}
@@ -251,6 +221,17 @@ export default function Edit({
 
                                     <div className="flex items-center justify-between pt-2 border-t border-border-subtle">
                                         <div>
+                                            <p className="text-sm font-medium text-foreground">Kirim Klaim Roles / Groups</p>
+                                            <p className="text-xs text-muted-foreground">Sertakan peran di ID token untuk app pihak ketiga (Nextcloud, Grafana, dll)</p>
+                                        </div>
+                                        <Switch
+                                            checked={form.include_roles_claim}
+                                            onCheckedChange={(val) => setForm(prev => ({ ...prev, include_roles_claim: val }))}
+                                        />
+                                    </div>
+
+                                    <div className="flex items-center justify-between pt-2 border-t border-border-subtle">
+                                        <div>
                                             <p className="text-sm font-medium text-foreground">Status Aktif</p>
                                             <p className="text-xs text-muted-foreground">Aplikasi nonaktif tidak muncul di launcher siapa pun</p>
                                         </div>
@@ -277,94 +258,12 @@ export default function Edit({
                     </TabsContent>
 
                     <TabsContent value="access">
-                        <div className="space-y-6 mt-4">
-                            {form.access_mode === 'restricted' ? (
-                                <Card>
-                                    <CardHeader className="border-b border-border-subtle pb-4">
-                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                                                <Lock className="w-4 h-4 text-amber-500" /> Pengguna dengan Izin Akses ({application.users?.length || 0})
-                                            </CardTitle>
-                                        </div>
-                                    </CardHeader>
-                                    <CardContent className="pt-6 space-y-6">
-                                        <form onSubmit={handleGrantAccess} className="flex flex-col sm:flex-row items-center gap-3">
-                                            <select
-                                                aria-label="Pilih Pengguna"
-                                                value={selectedUserId}
-                                                onChange={(e) => setSelectedUserId(e.target.value)}
-                                                className="flex h-9 w-full sm:w-80 rounded-md border border-border-subtle bg-background px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
-                                            >
-                                                <option value="">-- Pilih Pengguna Aktif --</option>
-                                                {availableUsersToGrant.map(u => (
-                                                    <option key={u.id} value={u.id}>
-                                                        {u.name} ({u.email})
-                                                    </option>
-                                                ))}
-                                            </select>
-                                            <Btn type="submit" size="sm" loading={granting} disabled={!selectedUserId} icon={<UserPlus className="w-4 h-4" />}>
-                                                Beri Akses
-                                            </Btn>
-                                        </form>
-
-                                        <div className="border border-border-subtle rounded-xl overflow-hidden">
-                                            <table className="w-full text-sm text-left">
-                                                <thead className="bg-surface-muted/50 border-b border-border-subtle text-xs text-muted-foreground uppercase">
-                                                    <tr>
-                                                        <th className="px-4 py-3">Nama</th>
-                                                        <th className="px-4 py-3">Email</th>
-                                                        <th className="px-4 py-3">Status</th>
-                                                        <th className="px-4 py-3 text-right">Aksi</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-border-subtle">
-                                                    {(application.users || []).length === 0 ? (
-                                                        <tr>
-                                                            <td colSpan={4} className="px-4 py-6 text-center text-muted-foreground text-xs">
-                                                                Belum ada pengguna yang diberikan akses khusus ke aplikasi ini.
-                                                            </td>
-                                                        </tr>
-                                                    ) : (
-                                                        (application.users || []).map(u => (
-                                                            <tr key={u.id} className="hover:bg-surface-muted/30 transition-colors">
-                                                                <td className="px-4 py-3 font-medium text-foreground flex items-center gap-2">
-                                                                    <User className="w-4 h-4 text-muted-foreground" />
-                                                                    <span>{u.name}</span>
-                                                                </td>
-                                                                <td className="px-4 py-3 text-muted-foreground text-xs">{u.email}</td>
-                                                                <td className="px-4 py-3">
-                                                                    <Badge variant={u.status === 'active' ? 'default' : 'secondary'} className="text-[10px]">
-                                                                        {u.status}
-                                                                    </Badge>
-                                                                </td>
-                                                                <td className="px-4 py-3 text-right">
-                                                                    <button
-                                                                        type="button"
-                                                                        aria-label={`Cabut akses ${u.name}`}
-                                                                        onClick={() => setUserToRevoke(u)}
-                                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
-                                                                    >
-                                                                        <Trash2 className="h-4 w-4" />
-                                                                    </button>
-                                                                </td>
-                                                            </tr>
-                                                        ))
-                                                    )}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            ) : (
-                                <Card>
-                                    <CardContent className="pt-6">
-                                        <p className="text-sm text-muted-foreground text-center py-8">
-                                            Mode akses saat ini adalah <strong>{form.access_mode === 'public' ? 'Publik' : 'Terotentikasi'}</strong>. Ubah ke mode <strong>Terbatas</strong> untuk mengelola hak akses pengguna.
-                                        </p>
-                                    </CardContent>
-                                </Card>
-                            )}
-                        </div>
+                        <AccessTab
+                            applicationId={application.id}
+                            accessMode={form.access_mode}
+                            grantedUsers={application.users || []}
+                            users={users}
+                        />
                     </TabsContent>
 
                     <TabsContent value="clients">
@@ -377,16 +276,6 @@ export default function Edit({
                         </div>
                     </TabsContent>
                 </Tabs>
-
-                <ConfirmDialog
-                    open={!!userToRevoke}
-                    onOpenChange={(open) => { if (!open) setUserToRevoke(null); }}
-                    title="Cabut Akses Pengguna"
-                    message={`Yakin ingin mencabut akses aplikasi untuk ${userToRevoke?.name}? Pengguna ini tidak akan dapat membuka aplikasi ini lagi.`}
-                    confirmLabel="Cabut Akses"
-                    variant="danger"
-                    onConfirm={confirmRevoke}
-                />
             </div>
         </DashboardLayout>
     );

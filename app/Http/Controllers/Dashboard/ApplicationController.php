@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Dashboard\ApplicationRequest;
 use App\Http\Requests\Dashboard\CollectionRequest;
 use App\Models\Application;
+use App\Models\AuditLog;
 use App\Models\User;
 use App\Services\AppAccessService;
 use Illuminate\Http\Request;
@@ -54,7 +55,8 @@ class ApplicationController extends Controller
 
     public function store(ApplicationRequest $request)
     {
-        Application::create($request->validated());
+        $app = Application::create($request->validated());
+        AuditLog::record('application.created', "Aplikasi {$app->name} dibuat", $app);
 
         return redirect()->route('dashboard.apps.index')->with('success', 'Aplikasi berhasil didaftarkan.');
     }
@@ -76,6 +78,7 @@ class ApplicationController extends Controller
     public function update(ApplicationRequest $request, Application $application)
     {
         $application->update($request->validated());
+        AuditLog::record('application.updated', "Aplikasi {$application->name} diperbarui", $application);
 
         return redirect()->route('dashboard.apps.index')->with('success', 'Aplikasi berhasil diperbarui.');
     }
@@ -84,6 +87,7 @@ class ApplicationController extends Controller
     {
         abort_unless($request->user()->can('account.apps.manage'), 403);
 
+        AuditLog::record('application.deleted', "Aplikasi {$application->name} dihapus", $application);
         $application->delete();
 
         return redirect()->route('dashboard.apps.index')->with('success', 'Aplikasi berhasil dihapus.');
@@ -100,6 +104,8 @@ class ApplicationController extends Controller
         $target = User::findOrFail($validated['user_id']);
         $this->accessService->grant($request->user(), $application, $target);
 
+        AuditLog::record('application.grant_created', "Akses aplikasi {$application->name} diberikan kepada {$target->name}", $application, ['target_user_id' => $target->id]);
+
         return back()->with('success', 'Akses aplikasi berhasil diberikan.');
     }
 
@@ -108,6 +114,8 @@ class ApplicationController extends Controller
         abort_unless($request->user()->can('account.apps.manage'), 403);
 
         $this->accessService->revoke($request->user(), $application, $user);
+
+        AuditLog::record('application.grant_revoked', "Akses aplikasi {$application->name} dicabut dari {$user->name}", $application, ['target_user_id' => $user->id]);
 
         return back()->with('success', 'Akses aplikasi berhasil dicabut.');
     }

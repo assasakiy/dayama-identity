@@ -12,6 +12,9 @@ use App\Http\Controllers\Dashboard\ProfileController;
 use App\Http\Controllers\Dashboard\RoleController;
 use App\Http\Controllers\Dashboard\SettingController;
 use App\Http\Controllers\Dashboard\UserController;
+use App\Http\Controllers\OAuth\LogoutController;
+use App\Http\Controllers\OAuth\TokenIntrospectionController;
+use App\Http\Controllers\OAuth\TokenRevocationController;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Route;
 
@@ -22,17 +25,28 @@ Route::get('/.well-known/openid-configuration', function (): JsonResponse {
         'issuer' => $issuer,
         'authorization_endpoint' => $issuer.'/oauth/authorize',
         'token_endpoint' => $issuer.'/oauth/token',
-        'jwks_uri' => $issuer.'/oauth/jwks',
         'userinfo_endpoint' => $issuer.'/api/userinfo',
+        'jwks_uri' => $issuer.'/oauth/jwks',
+        'end_session_endpoint' => $issuer.'/oauth/logout',
+        'revocation_endpoint' => $issuer.'/oauth/revoke',
+        'introspection_endpoint' => $issuer.'/oauth/introspect',
         'response_types_supported' => ['code'],
         'response_modes_supported' => ['query'],
-        'grant_types_supported' => ['authorization_code', 'refresh_token'],
+        'grant_types_supported' => ['authorization_code', 'refresh_token', 'client_credentials'],
         'subject_types_supported' => ['public'],
         'id_token_signing_alg_values_supported' => ['RS256'],
         'scopes_supported' => ['openid', 'profile', 'email', 'account.profile.read'],
         'token_endpoint_auth_methods_supported' => ['client_secret_basic', 'client_secret_post', 'none'],
+        'revocation_endpoint_auth_methods_supported' => ['client_secret_basic', 'client_secret_post', 'none'],
+        'introspection_endpoint_auth_methods_supported' => ['client_secret_basic', 'client_secret_post'],
+        'code_challenge_methods_supported' => ['S256', 'plain'],
+        'claims_supported' => ['sub', 'iss', 'aud', 'exp', 'iat', 'auth_time', 'nonce', 'name', 'email', 'email_verified', 'preferred_username', 'picture', 'roles'],
     ]);
 });
+
+Route::post('/oauth/revoke', TokenRevocationController::class)->middleware('throttle:60,1')->name('passport.token.revoke');
+Route::post('/oauth/introspect', TokenIntrospectionController::class)->middleware('throttle:60,1')->name('passport.token.introspect');
+Route::match(['get', 'post'], '/oauth/logout', LogoutController::class)->middleware('throttle:30,1')->name('passport.logout');
 
 Route::get('/oauth/jwks', function (): JsonResponse {
     $publicKeyPem = file_get_contents(storage_path('oauth-public.key'));

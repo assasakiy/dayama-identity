@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\AuditLog;
 use App\Models\Role;
 use App\Models\RoleAssignment;
 use App\Models\User;
@@ -36,11 +37,18 @@ class RoleAssignmentService
                 throw ValidationException::withMessages(['role_id' => 'Peran ini sudah ditetapkan untuk pengguna.']);
             }
 
-            return RoleAssignment::create([
+            $assignment = RoleAssignment::create([
                 'user_id' => $target->id,
                 'role_id' => $role->id,
                 'assigned_by' => $actor->id,
             ]);
+
+            AuditLog::record('role.assigned', "Menetapkan peran {$role->name} ke {$target->name}", $target, [
+                'role_id' => $role->id,
+                'role_name' => $role->name,
+            ]);
+
+            return $assignment;
         });
     }
 
@@ -62,6 +70,11 @@ class RoleAssignmentService
                     throw ValidationException::withMessages(['assignment' => 'Tidak dapat mencabut penugasan dari pengguna dengan rank setara atau lebih tinggi dari Anda.']);
                 }
             }
+
+            AuditLog::record('role.revoked', "Mencabut peran {$assignment->role?->name} dari {$assignment->user?->name}", $assignment->user, [
+                'role_id' => $assignment->role_id,
+                'role_name' => $assignment->role?->name,
+            ]);
 
             $assignment->delete();
         });

@@ -15,6 +15,7 @@ export default function Create() {
         base_url: '',
         launch_url: '',
         access_mode: 'authenticated',
+        include_roles_claim: false,
         status: 'active',
     });
 
@@ -202,6 +203,17 @@ export default function Create() {
                                     </div>
                                 </div>
                                 {errors.access_mode && <p className="text-xs text-destructive">{errors.access_mode}</p>}
+                            </div>
+
+                            <div className="flex items-center justify-between pt-2 border-t border-border-subtle">
+                                <div>
+                                    <p className="text-sm font-medium text-foreground">Kirim Klaim Roles / Groups</p>
+                                    <p className="text-xs text-muted-foreground">Sertakan klaim peran di ID token untuk integrasi pihak ketiga (Nextcloud, Grafana, dll)</p>
+                                </div>
+                                <Switch
+                                    checked={form.include_roles_claim}
+                                    onCheckedChange={(val) => setForm(prev => ({ ...prev, include_roles_claim: val }))}
+                                />
                             </div>
 
                             <div className="flex items-center justify-between pt-2 border-t border-border-subtle">

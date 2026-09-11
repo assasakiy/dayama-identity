@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\OAuth;
 
+use App\Models\ApplicationClient;
 use App\Models\AuthCode as AuthCodeModel;
+use App\Models\User;
 use Laravel\Passport\Http\Controllers\AccessTokenController as PassportTokenController;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -83,6 +85,16 @@ class TokenController extends PassportTokenController
 
         if ($nonce) {
             $claims['nonce'] = $nonce;
+        }
+
+        $client = ApplicationClient::with('application')->find($clientId);
+        if ($client?->application?->include_roles_claim) {
+            $user = User::find($userId);
+            if ($user) {
+                $roles = $user->roles()->pluck('name')->all();
+                $claims['roles'] = $roles;
+                $claims['groups'] = $roles;
+            }
         }
 
         $payload = json_encode($claims);

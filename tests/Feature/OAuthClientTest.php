@@ -38,6 +38,7 @@ class OAuthClientTest extends TestCase
 
         $this->actingAs($manager)->from("/dashboard/apps/{$app->id}/edit")->post("/dashboard/apps/{$app->id}/clients", [
             'name' => 'Web App',
+            'type' => 'confidential',
             'redirect_uris' => 'https://client.example.com/callback',
             'grant_types' => ['authorization_code', 'refresh_token'],
         ])->assertRedirect("/dashboard/apps/{$app->id}/edit");
@@ -50,6 +51,57 @@ class OAuthClientTest extends TestCase
         $this->assertEquals(['authorization_code', 'refresh_token'], $client->grant_types);
         $this->assertEquals($app->id, $client->application_id);
         $this->assertFalse($client->revoked);
+        $this->assertTrue($client->confidential());
+    }
+
+    public function test_manager_can_create_public_client_without_secret(): void
+    {
+        $manager = $this->manager();
+        $app = $this->app();
+
+        $response = $this->actingAs($manager)->from("/dashboard/apps/{$app->id}/edit")->post("/dashboard/apps/{$app->id}/clients", [
+            'name' => 'SPA Mobile App',
+            'type' => 'public',
+            'redirect_uris' => 'https://spa.example.com/callback',
+            'grant_types' => ['authorization_code', 'refresh_token'],
+        ])->assertRedirect("/dashboard/apps/{$app->id}/edit");
+
+        $client = ApplicationClient::firstOrFail();
+        $this->assertEquals('SPA Mobile App', $client->name);
+        $this->assertNull($client->getAttributes()['secret']);
+        $this->assertFalse($client->confidential());
+        $this->assertNull($response->getSession()->get('oauth_client_created')['client_secret']);
+        $this->assertFalse($response->getSession()->get('oauth_client_created')['is_confidential']);
+    }
+
+    public function test_public_client_cannot_use_client_credentials(): void
+    {
+        $manager = $this->manager();
+        $app = $this->app();
+
+        $this->actingAs($manager)->from("/dashboard/apps/{$app->id}/edit")->post("/dashboard/apps/{$app->id}/clients", [
+            'name' => 'SPA Mobile App',
+            'type' => 'public',
+            'redirect_uris' => 'https://spa.example.com/callback',
+            'grant_types' => ['client_credentials'],
+        ])->assertSessionHasErrors('grant_types');
+    }
+
+    public function test_rotating_secret_on_public_client_is_blocked(): void
+    {
+        $manager = $this->manager();
+        $app = $this->app();
+        $client = ApplicationClient::forceCreate([
+            'name' => 'Public Client',
+            'redirect_uris' => ['https://spa.example.com/callback'],
+            'grant_types' => ['authorization_code'],
+            'revoked' => false,
+            'application_id' => $app->id,
+            'secret' => null,
+        ]);
+
+        $this->actingAs($manager)->post("/dashboard/apps/{$app->id}/clients/{$client->id}/secret")
+            ->assertStatus(400);
     }
 
     public function test_created_client_secret_is_hashed_and_plain_secret_flashed_once(): void
