@@ -28,11 +28,11 @@ Account tidak memiliki Scope, ScopeType, Person, person_id, Institution, Student
 - URL aplikasi dan `return_url` wajib lolos `UrlSecurityService`.
 
 ## API dan Auth
-- API versioned di `/api/v1` dengan `auth:web`.
+- API versioned di `/api/v1` dengan `auth:web` dan `/api/userinfo` dengan `auth:api` (Passport).
 - `/api/v1/me`: `id`, `name`, `email`, `status`, `profile`, integer `auth_version`, dan assignments berisi role saja. Tidak ada person_id, scope claims, permission, atau rank.
 - `/api/v1/apps` dan application access tersedia dengan field `code`, `base_url`, `launch_url`.
 - `/api/v1/scopes` tidak tersedia.
-- OAuth2/OIDC issuer belum tersedia; dilarang membuat protokol tiket kustom atau issuer palsu.
+- OAuth2/OIDC issuer aktif via Passport: Authorization Code + PKCE (`S256`), discovery `/.well-known/openid-configuration`, JWKS `/oauth/jwks`, ID token RS256 (`iss`, `sub`, `aud`, `nonce`, `auth_time`), dan `/api/userinfo`.
 - `auth_version` naik pada perubahan identity/security, assignment, role, dan permission.
 
 ## UI

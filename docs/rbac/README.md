@@ -63,4 +63,7 @@ Setiap peran memiliki nilai numerik `rank`. Pengguna tidak dapat mengubah, mengh
 - URL dan `return_url` diverifikasi oleh `UrlSecurityService`.
 
 ### B. Status OAuth/SSO
-- OAuth2/OIDC issuer **belum tersedia**. Tidak ada JWT, ID token, PKCE server, introspection.
+- OAuth2/OIDC issuer **aktif** menggunakan Laravel Passport v13.
+- Mendukung: Authorization Code grant dengan PKCE (`S256`), discovery endpoint (`/.well-known/openid-configuration`), JWKS endpoint (`/oauth/jwks`), UserInfo (`/api/userinfo`), serta ID token bertanda tangan RS256 (`iss`, `sub`, `aud`, `exp`, `iat`, `nonce`, `auth_time`).
+- Client first-party (`is_first_party = true`) otomatis melewati consent screen.
+- Mode akses aplikasi diverifikasi di tahap `/oauth/authorize`.

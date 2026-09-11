@@ -1,10 +1,10 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/laravel",
+    "name": "dayama/identity",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
-    "keywords": ["laravel", "framework"],
-    "license": "MIT",
+    "description": "Dayama Platform Identity Provider & Centralized SSO Service",
+    "keywords": ["dayama", "identity", "sso", "oauth2", "oidc"],
+    "license": "proprietary",
     "require": {
         "php": "^8.3",
         "inertiajs/inertia-laravel": "3.1",
